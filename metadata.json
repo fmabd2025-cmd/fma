@@ -1,0 +1,6 @@
+{
+  "name": "FMA 2025 Management System",
+  "description": "Inventory and financial management system for Friends Multipurpose Association 2025.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
