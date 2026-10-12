@@ -16,6 +16,13 @@ import{r as hl,a as o,U as Js,X as ke,C as pl,S as st,M as Vt,A as ct,b as Yt,c 
 -- =====================================================================
 
 -- 1. Shareholders Table (শেয়ারহোল্ডার তথ্যাদি ও ভর্তি আবেদন)
+-- =====================================================================
+-- Friends Multipurpose Association 2025 (FMA 2025)
+-- Supabase Cloud Database, Storage Bucket & Realtime Setup Script
+-- Project ID: hvvninattgtclkwtqzja
+-- =====================================================================
+
+-- 1. Shareholders Table (শেয়ারহোল্ডার তথ্যাদি ও ভর্তি আবেদন)
 CREATE TABLE IF NOT EXISTS public.shareholders (
   id TEXT PRIMARY KEY,
   id_no TEXT,
@@ -41,24 +48,15 @@ CREATE TABLE IF NOT EXISTS public.shareholders (
   signature TEXT,
   admission_fee NUMERIC DEFAULT 200,
   admission_screenshot TEXT,
+  monthly_deposit NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
--- Ensure email, password, and monthly_deposit columns exist in case table was pre-created
 ALTER TABLE public.shareholders ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.shareholders ADD COLUMN IF NOT EXISTS password TEXT;
 ALTER TABLE public.shareholders ADD COLUMN IF NOT EXISTS monthly_deposit NUMERIC DEFAULT 0;
 
--- 2. Bank Deposited Table (ব্যাংক ডিপোজিট ও মাসিক কিস্তি জমা ভাউচার)
--- Preserve existing records while moving the legacy table to its correct name.
-DO $$
-BEGIN
-  IF to_regclass('public.bank_deposited') IS NOT NULL AND to_regclass('public.bank_deposited') IS NULL THEN
-    ALTER TABLE public.bank_deposited RENAME TO bank_deposited;
-  END IF;
-END $$;
-
+-- 2. Bank Deposited Table (ব্যাংক ডিপোজিট, শেয়ার মূলধন ও মাসিক কিস্তি জমা ভাউচার)
 CREATE TABLE IF NOT EXISTS public.bank_deposited (
   id TEXT PRIMARY KEY,
   id_no TEXT,
@@ -119,9 +117,27 @@ CREATE TABLE IF NOT EXISTS public.association_costs (
 );
 ALTER TABLE public.association_costs ADD COLUMN IF NOT EXISTS receipt_url TEXT;
 
--- 6. Petty Cash is derived from additions minus costs.
--- Add New Petty Cash and Cost from Petty Cash are stored separately so the
--- Dashboard Petty Cash balance remains auditable.
+-- 6. Petty Cash Unified Ledger Table
+-- (Add New Petty Cash [type: 'income'] - Cost from Petty Cash [type: 'expense'] = Dashboard Petty Cash Result)
+CREATE TABLE IF NOT EXISTS public.petty_cash (
+  id TEXT PRIMARY KEY,
+  invoice_no TEXT,
+  source TEXT,
+  name_of_cost TEXT,
+  date TEXT,
+  amount NUMERIC NOT NULL DEFAULT 0,
+  type TEXT DEFAULT 'income', -- 'income' (Add New Petty Cash) or 'expense' (Cost from Petty Cash)
+  transaction_type TEXT DEFAULT 'income',
+  receipt_url TEXT,
+  status TEXT DEFAULT 'approved', -- 'approved', 'pending', 'rejected'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.petty_cash ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'income';
+ALTER TABLE public.petty_cash ADD COLUMN IF NOT EXISTS transaction_type TEXT DEFAULT 'income';
+ALTER TABLE public.petty_cash ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+ALTER TABLE public.petty_cash ADD COLUMN IF NOT EXISTS name_of_cost TEXT;
+
+-- Separate tables for direct accounting auditing if preferred
 CREATE TABLE IF NOT EXISTS public.petty_cash_additions (
   id TEXT PRIMARY KEY,
   invoice_no TEXT,
@@ -132,6 +148,7 @@ CREATE TABLE IF NOT EXISTS public.petty_cash_additions (
   status TEXT DEFAULT 'approved',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
 CREATE TABLE IF NOT EXISTS public.petty_cash_costs (
   id TEXT PRIMARY KEY,
   invoice_no TEXT,
@@ -184,7 +201,7 @@ CREATE TABLE IF NOT EXISTS public.videos (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. Site Settings Table (হেডার/ফুটার, লোগো, বাণী ও বিজ্ঞাপন কনফিগ)
+-- 10. Site Settings Table (হেডার/ফুটার, লোগো, বাণী, নোটিশ ও ওয়েবসাইট সেটিংস বাই মাস্টার এডমিন)
 CREATE TABLE IF NOT EXISTS public.site_settings (
   key TEXT PRIMARY KEY,
   value JSONB NOT NULL,
@@ -240,7 +257,7 @@ CREATE TABLE IF NOT EXISTS public.bank_due (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 14. Bank Categories & Options Table (কাস্টম বাটন ও অপশন রেজিস্ট্রি)
+-- 14. Bank Categories & Custom Buttons Table (কাস্টম বাটন ও অপশন রেজিস্ট্রি)
 CREATE TABLE IF NOT EXISTS public.bank_categories (
   id TEXT PRIMARY KEY,
   key TEXT UNIQUE NOT NULL,
@@ -263,6 +280,8 @@ ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.selling ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.association_costs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.petty_cash ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.petty_cash_additions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.petty_cash_costs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.media_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
@@ -275,99 +294,97 @@ ALTER TABLE public.bank_categories ENABLE ROW LEVEL SECURITY;
 -- =====================================================================
 -- Create Open Access Policies for Data Sync (Anon & Authenticated)
 -- =====================================================================
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for shareholders" ON public.shareholders;
   CREATE POLICY "Allow all for shareholders" ON public.shareholders FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for bank_deposited" ON public.bank_deposited;
   CREATE POLICY "Allow all for bank_deposited" ON public.bank_deposited FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for investments" ON public.investments;
   CREATE POLICY "Allow all for investments" ON public.investments FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for selling" ON public.selling;
   CREATE POLICY "Allow all for selling" ON public.selling FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for association_costs" ON public.association_costs;
   CREATE POLICY "Allow all for association_costs" ON public.association_costs FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for petty_cash" ON public.petty_cash;
   CREATE POLICY "Allow all for petty_cash" ON public.petty_cash FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Allow all for petty_cash_additions" ON public.petty_cash_additions;
+  CREATE POLICY "Allow all for petty_cash_additions" ON public.petty_cash_additions FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Allow all for petty_cash_costs" ON public.petty_cash_costs;
+  CREATE POLICY "Allow all for petty_cash_costs" ON public.petty_cash_costs FOR ALL USING (true) WITH CHECK (true);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for messages" ON public.messages;
   CREATE POLICY "Allow all for messages" ON public.messages FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for media_items" ON public.media_items;
   CREATE POLICY "Allow all for media_items" ON public.media_items FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for videos" ON public.videos;
   CREATE POLICY "Allow all for videos" ON public.videos FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for site_settings" ON public.site_settings;
   CREATE POLICY "Allow all for site_settings" ON public.site_settings FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for bank_withdraw" ON public.bank_withdraw;
   CREATE POLICY "Allow all for bank_withdraw" ON public.bank_withdraw FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for bank_due_deposited" ON public.bank_due_deposited;
   CREATE POLICY "Allow all for bank_due_deposited" ON public.bank_due_deposited FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for bank_due" ON public.bank_due;
   CREATE POLICY "Allow all for bank_due" ON public.bank_due FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Allow all for bank_categories" ON public.bank_categories;
   CREATE POLICY "Allow all for bank_categories" ON public.bank_categories FOR ALL USING (true) WITH CHECK (true);
 EXCEPTION WHEN others THEN NULL;
@@ -380,8 +397,7 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('fma-media', 'fma-media', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
-DO $$ 
-BEGIN
+DO $$ BEGIN
   DROP POLICY IF EXISTS "Public media select" ON storage.objects;
   DROP POLICY IF EXISTS "Public media access" ON storage.objects;
   DROP POLICY IF EXISTS "Allow public select on fma-media" ON storage.objects;
@@ -413,8 +429,7 @@ END $$;
 -- =====================================================================
 -- Enable Realtime for Continuous Live Updates
 -- =====================================================================
-DO $$
-BEGIN
+DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE 
     public.shareholders,
     public.bank_deposited,
@@ -422,6 +437,8 @@ BEGIN
     public.selling,
     public.association_costs,
     public.petty_cash,
+    public.petty_cash_additions,
+    public.petty_cash_costs,
     public.messages,
     public.media_items,
     public.videos,
